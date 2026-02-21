@@ -27,6 +27,10 @@ app.use("/api", appointmentRoutes);
 const hospitalRoutes = require("./routes/hospitalRoutes");
 app.use("/api/hospital", hospitalRoutes);
 
+// file upload route
+const uploadRoutes = require("./routes/uploadRoutes");
+app.use("/api", uploadRoutes);
+
 app.listen( 5000 , () => {
   console.log("Server running on port 5000");
 });

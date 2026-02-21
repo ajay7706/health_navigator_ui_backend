@@ -31,7 +31,9 @@ router.post("/signup", async (req, res) => {
     });
 
     await user.save();
-    res.status(201).json({ message: "Signup successful", user });
+    // create token and return to client so user can continue (auto-login)
+    const token = jwt.sign({ id: user._id }, "secretkey", { expiresIn: "1d" });
+    res.status(201).json({ message: "Signup successful", user, token });
   } catch (error) {
     console.error("Signup error:", error);
     res.status(500).json({ message: "Error during signup" });

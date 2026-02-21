@@ -8,6 +8,15 @@ const path = require("path");
 
 const router = express.Router();
 
+// Shared transporter for appointment notifications
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
 // router.post("/book-appointment", async (req, res) => {
 //   try {
     // const { patientId, hospitalId, date, time } = req.body;
@@ -148,6 +157,62 @@ router.post("/book-appointment", async (req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+// GET all appointments (admin)
+router.get('/appointments', async (req, res) => {
+  try {
+    const appts = await Appointment.find().populate('patientId', 'name email').populate('hospitalId', 'name email');
+    res.json(appts);
+  } catch (err) {
+    console.error('Get appointments error:', err);
+    res.status(500).json({ message: 'Error fetching appointments' });
+  }
+});
+
+// GET appointments for a specific hospital
+router.get('/appointments/hospital/:hospitalId', async (req, res) => {
+  try {
+    const { hospitalId } = req.params;
+    const appts = await Appointment.find({ hospitalId }).populate('patientId', 'name email').populate('hospitalId', 'name email');
+    res.json(appts);
+  } catch (err) {
+    console.error('Get hospital appointments error:', err);
+    res.status(500).json({ message: 'Error fetching hospital appointments' });
+  }
+});
+
+// Update appointment status
+router.put('/appointments/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ message: 'Status is required' });
+
+    const appt = await Appointment.findById(id).populate('patientId', 'name email').populate('hospitalId', 'name email');
+    if (!appt) return res.status(404).json({ message: 'Appointment not found' });
+
+    appt.status = status;
+    await appt.save();
+
+    // notify patient and hospital
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: [appt.patientId.email, appt.hospitalId.email],
+        subject: `Appointment ${status}`,
+        html: `<p>Your appointment scheduled on <strong>${appt.date}</strong> at <strong>${appt.time}</strong> is now <strong>${status}</strong>.</p>`
+      });
+    } catch (emailErr) {
+      console.error('Appointment status email failed:', emailErr);
+    }
+
+    res.json({ message: 'Appointment status updated', appointment: appt });
+  } catch (err) {
+    console.error('Update appointment status error:', err);
+    res.status(500).json({ message: 'Error updating appointment status' });
   }
 });
 
