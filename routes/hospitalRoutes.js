@@ -28,31 +28,51 @@ router.post("/add-hospital", async (req, res) => {
       contactNumber,
       officialEmail,
       identificationNumber,
-      about
+      about,
+      hospitalLogo
     } = req.body;
 
+    // Validate required fields
+    if (!ownerId || !hospitalName || !ownerName || !city || !contactNumber || !officialEmail || !identificationNumber) {
+      return res.status(400).json({ message: "All required fields must be provided" });
+    }
+
     const hospital = new Hospital({
-      hospitalId: "HOSP" + Math.floor(100000 + Math.random() * 900000), // random 6 digit
+      hospitalId: "HOSP" + Math.floor(100000 + Math.random() * 900000),
       ownerId,
       hospitalName,
+      hospitalLogo,
       ownerName,
       city,
       contactNumber,
       officialEmail,
       identificationNumber,
-      about,
+      about: about || '',
       status: "Pending"
     });
 
     await hospital.save();
 
-    // Send Email
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: officialEmail,
-      subject: "Hospital Registration Submitted",
-      text: "Your hospital profile has been submitted and is pending approval."
-    });
+    // Send Email Confirmation
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: officialEmail,
+        subject: "Hospital Registration Submitted - Pending Approval",
+        html: `
+          <h2>Welcome ${hospitalName}!</h2>
+          <p>Your hospital profile has been submitted for verification.</p>
+          <p><strong>Status:</strong> Pending Approval</p>
+          <p>Our team will review your details and approve your profile within 24-48 hours.</p>
+          <p>You will receive an email notification once your profile is approved.</p>
+          <p>Best regards,<br/>BookVisit Team</p>
+        `
+      });
+      console.log("Email sent to", officialEmail);
+    } catch (emailErr) {
+      console.error("Email send failed:", emailErr);
+      // Don't fail the request if email fails
+    }
 
     res.status(201).json({
       message: "Hospital added successfully (Pending Approval)",
@@ -60,8 +80,8 @@ router.post("/add-hospital", async (req, res) => {
     });
 
   } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Error adding hospital" });
+    console.error("Add hospital error:", error);
+    res.status(500).json({ message: "Error adding hospital", error: error.message });
   }
 });
 
@@ -134,8 +154,8 @@ router.put("/update-hospital-status/:id", async (req, res) => {
 
     const status = req.body.status;
 
-    if (!status) {
-      return res.status(400).json({ message: "Status is required" });
+    if (!status || !['Approved', 'Rejected', 'Pending'].includes(status)) {
+      return res.status(400).json({ message: "Valid status is required (Approved, Rejected, or Pending)" });
     }
 
     const hospital = await Hospital.findByIdAndUpdate(
@@ -148,13 +168,52 @@ router.put("/update-hospital-status/:id", async (req, res) => {
       return res.status(404).json({ message: "Hospital not found" });
     }
 
-    // Send Email
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: hospital.officialEmail,
-      subject: "Hospital Status Update",
-      text: `Your hospital status is now: ${status}`
-    });
+    // Send Email with HTML formatting
+    const statusMessages = {
+      Approved: {
+        subject: "🎉 Your Hospital Profile Has Been Approved!",
+        html: `
+          <h2>Welcome to BookVisit, ${hospital.hospitalName}!</h2>
+          <p>Congratulations! Your hospital profile has been <strong>APPROVED</strong>.</p>
+          <p>Your profile is now live and visible to patients on our platform.</p>
+          <p><strong>Hospital ID:</strong> ${hospital.hospitalId}</p>
+          <p><strong>Next Steps:</strong> Monitor your profile and publish your available appointments.</p>
+          <p>Best regards,<br/>BookVisit Team</p>
+        `
+      },
+      Rejected: {
+        subject: "Hospital Profile Status Update",
+        html: `
+          <h2>Profile Review</h2>
+          <p>Your hospital profile has been <strong>REJECTED</strong>.</p>
+          <p>Please contact our support team for more details or to reapply.</p>
+          <p>Support: support@bookvisit.com</p>
+        `
+      },
+      Pending: {
+        subject: "Hospital Profile Status Update",
+        html: `
+          <h2>Status Update</h2>
+          <p>Your hospital profile status is <strong>PENDING</strong>.</p>
+          <p>We are reviewing your details. You will be notified once a decision is made.</p>
+        `
+      }
+    };
+
+    const emailTemplate = statusMessages[status];
+    
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: hospital.officialEmail,
+        subject: emailTemplate.subject,
+        html: emailTemplate.html
+      });
+      console.log("Status update email sent to", hospital.officialEmail);
+    } catch (emailErr) {
+      console.error("Email send failed:", emailErr);
+      // Don't fail the request if email fails
+    }
 
     res.json({
       message: `Hospital status updated to ${status}`,
@@ -162,8 +221,8 @@ router.put("/update-hospital-status/:id", async (req, res) => {
     });
 
   } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Error updating hospital status" });
+    console.error("Update status error:", error);
+    res.status(500).json({ message: "Error updating hospital status", error: error.message });
   }
 });
 
